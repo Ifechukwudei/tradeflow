@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const OrderModel = require('../models/order.model');
+const InvoiceModel = require('../models/invoice.model');
 
 const OrderController = {
   async getAll(req, res) {
@@ -32,6 +33,40 @@ const OrderController = {
       if (err.message.includes('Insufficient stock') || err.message.includes('not found')) {
         return res.status(422).json({ error: err.message });
       }
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async confirm(req, res) {
+    try {
+      const order = await OrderModel.confirm(req.params.id);
+      res.json({ message: 'Order confirmed', data: order });
+    } catch (err) {
+      if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
+      if (err.message.includes('Cannot confirm')) return res.status(422).json({ error: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async ship(req, res) {
+    try {
+      const order = await OrderModel.ship(req.params.id);
+      res.json({ message: 'Order shipped', data: order });
+    } catch (err) {
+      if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
+      if (err.message.includes('Cannot ship')) return res.status(422).json({ error: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async invoice(req, res) {
+    try {
+      const due_days = req.body.due_days || 30;
+      const invoice = await InvoiceModel.create(req.params.id, due_days);
+      res.status(201).json({ message: 'Invoice generated', data: invoice });
+    } catch (err) {
+      if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
+      if (err.message.includes('must be shipped')) return res.status(422).json({ error: err.message });
       res.status(500).json({ error: err.message });
     }
   },

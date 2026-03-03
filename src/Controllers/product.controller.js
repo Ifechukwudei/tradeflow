@@ -1,5 +1,5 @@
-const { validationResult } = require('express-validator');
-const ProductModel = require('../models/product.model');
+const { validationResult } = require("express-validator");
+const ProductModel = require("../Models/product.model");
 
 const ProductController = {
   async getAll(req, res) {
@@ -14,7 +14,7 @@ const ProductController = {
   async getOne(req, res) {
     try {
       const product = await ProductModel.findById(req.params.id);
-      if (!product) return res.status(404).json({ error: 'Product not found' });
+      if (!product) return res.status(404).json({ error: "Product not found" });
       res.json({ data: product });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -23,24 +23,27 @@ const ProductController = {
 
   async create(req, res) {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
     try {
       const product = await ProductModel.create(req.body);
       res.status(201).json({ data: product });
     } catch (err) {
-      if (err.code === '23505') return res.status(409).json({ error: 'SKU already exists' });
+      if (err.code === "23505")
+        return res.status(409).json({ error: "SKU already exists" });
       res.status(500).json({ error: err.message });
     }
   },
 
   async update(req, res) {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
     try {
       const product = await ProductModel.update(req.params.id, req.body);
-      if (!product) return res.status(404).json({ error: 'Product not found' });
+      if (!product) return res.status(404).json({ error: "Product not found" });
       res.json({ data: product });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -50,8 +53,8 @@ const ProductController = {
   async delete(req, res) {
     try {
       const product = await ProductModel.delete(req.params.id);
-      if (!product) return res.status(404).json({ error: 'Product not found' });
-      res.json({ message: 'Product deleted', data: product });
+      if (!product) return res.status(404).json({ error: "Product not found" });
+      res.json({ message: "Product deleted", data: product });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

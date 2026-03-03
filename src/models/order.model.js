@@ -1,4 +1,4 @@
-const db = require("../db");
+const db = require('../db');
 
 const OrderModel = {
   async findAll() {
@@ -6,21 +6,19 @@ const OrderModel = {
       `SELECT o.*, c.name AS customer_name, c.email AS customer_email
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
-       ORDER BY o.id DESC`,
+       ORDER BY o.id DESC`
     );
     return rows;
   },
 
   async findById(id) {
     // Get the order header
-    const {
-      rows: [order],
-    } = await db.query(
+    const { rows: [order] } = await db.query(
       `SELECT o.*, c.name AS customer_name, c.email AS customer_email
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
        WHERE o.id = $1`,
-      [id],
+      [id]
     );
 
     if (!order) return null;
@@ -31,7 +29,7 @@ const OrderModel = {
        FROM order_items oi
        JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id = $1`,
-      [id],
+      [id]
     );
 
     return { ...order, items };
@@ -43,6 +41,7 @@ const OrderModel = {
    */
   async create({ customer_id, items, notes }) {
     return db.withTransaction(async (client) => {
+
       // 1. Lock and check inventory for every item in one go
       const productIds = items.map((i) => i.product_id);
 
@@ -54,7 +53,7 @@ const OrderModel = {
          JOIN products p ON p.id = i.product_id
          WHERE i.product_id = ANY($1)
          FOR UPDATE`,
-        [productIds],
+        [productIds]
       );
 
       // Index inventory by product_id for easy lookup
@@ -74,7 +73,7 @@ const OrderModel = {
         if (item.quantity > inv.qty_available) {
           throw new Error(
             `Insufficient stock for "${inv.name}". ` +
-              `Requested: ${item.quantity}, Available: ${inv.qty_available}`,
+            `Requested: ${item.quantity}, Available: ${inv.qty_available}`
           );
         }
       }
@@ -89,12 +88,10 @@ const OrderModel = {
       });
 
       // 4. Create the order header
-      const {
-        rows: [order],
-      } = await client.query(
+      const { rows: [order] } = await client.query(
         `INSERT INTO orders (customer_id, total_amount, notes)
          VALUES ($1, $2, $3) RETURNING *`,
-        [customer_id, total_amount.toFixed(2), notes],
+        [customer_id, total_amount.toFixed(2), notes]
       );
 
       // 5. Insert order line items
@@ -102,7 +99,7 @@ const OrderModel = {
         await client.query(
           `INSERT INTO order_items (order_id, product_id, quantity, unit_price)
            VALUES ($1, $2, $3, $4)`,
-          [order.id, item.product_id, item.quantity, item.unit_price],
+          [order.id, item.product_id, item.quantity, item.unit_price]
         );
       }
 
@@ -112,29 +109,29 @@ const OrderModel = {
           `UPDATE inventory
            SET qty_reserved = qty_reserved + $1, updated_at = NOW()
            WHERE product_id = $2`,
-          [item.quantity, item.product_id],
+          [item.quantity, item.product_id]
         );
       }
 
       // 7. Return the full order with items
       // 7. Return the full order with items
-      const { rows: orderItems } = await client.query(
-        `SELECT oi.*, p.name AS product_name, p.sku
+const { rows: orderItems } = await client.query(
+  `SELECT oi.*, p.name AS product_name, p.sku
    FROM order_items oi
    JOIN products p ON p.id = oi.product_id
    WHERE oi.order_id = $1`,
-        [order.id],
-      );
+  [order.id]
+);
 
-      return { ...order, items: orderItems };
-    }); // End of withTransaction
+return { ...order, items: orderItems };
+    });
   },
 
   async updateStatus(id, status) {
     const { rows } = await db.query(
       `UPDATE orders SET status=$1, updated_at=NOW()
        WHERE id=$2 RETURNING *`,
-      [status, id],
+      [status, id]
     );
     return rows[0] || null;
   },
@@ -142,21 +139,20 @@ const OrderModel = {
   async cancel(id) {
     return db.withTransaction(async (client) => {
       // Get the order and its items
-      const {
-        rows: [order],
-      } = await client.query(`SELECT * FROM orders WHERE id=$1 FOR UPDATE`, [
-        id,
-      ]);
+      const { rows: [order] } = await client.query(
+        `SELECT * FROM orders WHERE id=$1 FOR UPDATE`,
+        [id]
+      );
 
-      if (!order) throw new Error("Order not found");
-      if (["shipped", "invoiced", "paid"].includes(order.status)) {
+      if (!order) throw new Error('Order not found');
+      if (['shipped', 'invoiced', 'paid'].includes(order.status)) {
         throw new Error(`Cannot cancel an order with status: ${order.status}`);
       }
 
       // Release reserved inventory
       const { rows: items } = await client.query(
         `SELECT * FROM order_items WHERE order_id=$1`,
-        [id],
+        [id]
       );
 
       for (const item of items) {
@@ -164,17 +160,15 @@ const OrderModel = {
           `UPDATE inventory
            SET qty_reserved = qty_reserved - $1, updated_at = NOW()
            WHERE product_id = $2`,
-          [item.quantity, item.product_id],
+          [item.quantity, item.product_id]
         );
       }
 
       // Update order status to cancelled
-      const {
-        rows: [updated],
-      } = await client.query(
+      const { rows: [updated] } = await client.query(
         `UPDATE orders SET status='cancelled', updated_at=NOW()
          WHERE id=$1 RETURNING *`,
-        [id],
+        [id]
       );
 
       return updated;
@@ -183,3 +177,59 @@ const OrderModel = {
 };
 
 module.exports = OrderModel;
+
+// Append confirm and ship to OrderModel
+const fulfillmentMethods = {
+  async confirm(id) {
+    const { rows: [order] } = await db.query(
+      `SELECT * FROM orders WHERE id=$1`, [id]
+    );
+    if (!order) throw new Error('Order not found');
+    if (order.status !== 'pending') throw new Error(`Cannot confirm an order with status: ${order.status}`);
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE orders SET status='confirmed', updated_at=NOW() WHERE id=$1 RETURNING *`, [id]
+    );
+    return updated;
+  },
+
+  async ship(id) {
+    return db.withTransaction(async (client) => {
+      const { rows: [order] } = await client.query(
+        `SELECT * FROM orders WHERE id=$1 FOR UPDATE`, [id]
+      );
+      if (!order) throw new Error('Order not found');
+      if (order.status !== 'confirmed') throw new Error(`Cannot ship an order with status: ${order.status}`);
+
+      const { rows: items } = await client.query(
+        `SELECT * FROM order_items WHERE order_id=$1`, [id]
+      );
+
+      // Deduct qty_on_hand and release qty_reserved
+      for (const item of items) {
+        await client.query(
+          `UPDATE inventory
+           SET qty_on_hand = qty_on_hand - $1,
+               qty_reserved = qty_reserved - $1,
+               updated_at = NOW()
+           WHERE product_id = $2`,
+          [item.quantity, item.product_id]
+        );
+
+        // Log the deduction in adjustment history
+        await client.query(
+          `INSERT INTO inventory_adjustments (product_id, delta, reason)
+           VALUES ($1, $2, $3)`,
+          [item.product_id, -item.quantity, `Shipped on Order #${id}`]
+        );
+      }
+
+      const { rows: [updated] } = await client.query(
+        `UPDATE orders SET status='shipped', updated_at=NOW() WHERE id=$1 RETURNING *`, [id]
+      );
+      return updated;
+    });
+  },
+};
+
+Object.assign(OrderModel, fulfillmentMethods);

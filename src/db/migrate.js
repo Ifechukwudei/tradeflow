@@ -3,6 +3,21 @@ const { query } = require('./index');
 const migrate = async () => {
   console.log('Running migrations...');
 
+  // Users table
+  await query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id            SERIAL PRIMARY KEY,
+      name          VARCHAR(255) NOT NULL,
+      email         VARCHAR(255) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      role          VARCHAR(50) NOT NULL DEFAULT 'staff'
+                    CHECK (role IN ('admin', 'staff', 'viewer')),
+      is_active     BOOLEAN NOT NULL DEFAULT true,
+      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   // Products table
   await query(`
     CREATE TABLE IF NOT EXISTS products (
@@ -16,7 +31,7 @@ const migrate = async () => {
     );
   `);
 
-  // Inventory table (one row per product)
+  // Inventory table
   await query(`
     CREATE TABLE IF NOT EXISTS inventory (
       id            SERIAL PRIMARY KEY,
@@ -76,6 +91,36 @@ const migrate = async () => {
       unit_price  NUMERIC(12, 2) NOT NULL,
       total_price NUMERIC(12, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
       created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  // Invoices table
+  await query(`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id             SERIAL PRIMARY KEY,
+      order_id       INTEGER UNIQUE NOT NULL REFERENCES orders(id),
+      invoice_number VARCHAR(50) UNIQUE NOT NULL,
+      amount_due     NUMERIC(12, 2) NOT NULL,
+      amount_paid    NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      due_date       DATE NOT NULL,
+      status         VARCHAR(50) NOT NULL DEFAULT 'unpaid'
+                     CHECK (status IN ('unpaid', 'partial', 'paid')),
+      created_at     TIMESTAMPTZ DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  // Payments table
+  await query(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id             SERIAL PRIMARY KEY,
+      invoice_id     INTEGER NOT NULL REFERENCES invoices(id),
+      amount         NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+      payment_method VARCHAR(50) NOT NULL DEFAULT 'bank_transfer'
+                     CHECK (payment_method IN ('bank_transfer', 'credit_card', 'cash', 'cheque')),
+      reference      VARCHAR(255),
+      notes          TEXT,
+      paid_at        TIMESTAMPTZ DEFAULT NOW()
     );
   `);
 

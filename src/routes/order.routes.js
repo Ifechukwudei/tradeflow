@@ -13,6 +13,9 @@ const createRules = [
 router.get('/', OrderController.getAll);
 router.get('/:id', OrderController.getOne);
 router.post('/', createRules, OrderController.create);
+router.patch('/:id/confirm', OrderController.confirm);
+router.patch('/:id/ship', OrderController.ship);
+router.patch('/:id/invoice', OrderController.invoice);
 router.patch('/:id/cancel', OrderController.cancel);
 
 module.exports = router;

@@ -1,9 +1,8 @@
-const { query } = require('./index');
+const { query } = require("./index");
 
 const migrate = async () => {
-  console.log('Running migrations...');
+  console.log("Running migrations...");
 
-  // Users table
   await query(`
     CREATE TABLE IF NOT EXISTS users (
       id            SERIAL PRIMARY KEY,
@@ -18,7 +17,6 @@ const migrate = async () => {
     );
   `);
 
-  // Products table
   await query(`
     CREATE TABLE IF NOT EXISTS products (
       id          SERIAL PRIMARY KEY,
@@ -31,7 +29,6 @@ const migrate = async () => {
     );
   `);
 
-  // Inventory table
   await query(`
     CREATE TABLE IF NOT EXISTS inventory (
       id            SERIAL PRIMARY KEY,
@@ -43,7 +40,6 @@ const migrate = async () => {
     );
   `);
 
-  // Inventory adjustment log
   await query(`
     CREATE TABLE IF NOT EXISTS inventory_adjustments (
       id          SERIAL PRIMARY KEY,
@@ -54,7 +50,6 @@ const migrate = async () => {
     );
   `);
 
-  // Customers table
   await query(`
     CREATE TABLE IF NOT EXISTS customers (
       id         SERIAL PRIMARY KEY,
@@ -67,7 +62,6 @@ const migrate = async () => {
     );
   `);
 
-  // Orders table
   await query(`
     CREATE TABLE IF NOT EXISTS orders (
       id           SERIAL PRIMARY KEY,
@@ -81,7 +75,6 @@ const migrate = async () => {
     );
   `);
 
-  // Order items table
   await query(`
     CREATE TABLE IF NOT EXISTS order_items (
       id          SERIAL PRIMARY KEY,
@@ -94,7 +87,6 @@ const migrate = async () => {
     );
   `);
 
-  // Invoices table
   await query(`
     CREATE TABLE IF NOT EXISTS invoices (
       id             SERIAL PRIMARY KEY,
@@ -110,7 +102,6 @@ const migrate = async () => {
     );
   `);
 
-  // Payments table
   await query(`
     CREATE TABLE IF NOT EXISTS payments (
       id             SERIAL PRIMARY KEY,
@@ -124,11 +115,47 @@ const migrate = async () => {
     );
   `);
 
-  console.log('✅ Migrations complete.');
+  await query(`
+    CREATE TABLE IF NOT EXISTS returns (
+      id         SERIAL PRIMARY KEY,
+      order_id   INTEGER NOT NULL REFERENCES orders(id),
+      reason     TEXT NOT NULL,
+      status     VARCHAR(50) NOT NULL DEFAULT 'requested'
+                 CHECK (status IN ('requested', 'approved', 'restocked', 'refunded', 'rejected')),
+      notes      TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS return_items (
+      id         SERIAL PRIMARY KEY,
+      return_id  INTEGER NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      quantity   INTEGER NOT NULL CHECK (quantity > 0),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS credit_notes (
+      id                 SERIAL PRIMARY KEY,
+      return_id          INTEGER UNIQUE NOT NULL REFERENCES returns(id),
+      credit_note_number VARCHAR(50) UNIQUE NOT NULL,
+      amount             NUMERIC(12, 2) NOT NULL,
+      status             VARCHAR(50) NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending', 'refunded')),
+      created_at         TIMESTAMPTZ DEFAULT NOW(),
+      updated_at         TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  console.log("Migrations complete.");
   process.exit(0);
 };
 
 migrate().catch((err) => {
-  console.error('Migration failed:', err);
+  console.error("Migration failed:", err);
   process.exit(1);
 });

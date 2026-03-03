@@ -4,8 +4,9 @@ const CustomerModel = require('../models/customer.model');
 const CustomerController = {
   async getAll(req, res) {
     try {
-      const customers = await CustomerModel.findAll();
-      res.json({ data: customers });
+      const { page, limit, search } = req.query;
+      const result = await CustomerModel.findAll({ page, limit, search });
+      res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

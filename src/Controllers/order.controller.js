@@ -5,8 +5,9 @@ const InvoiceModel = require('../models/invoice.model');
 const OrderController = {
   async getAll(req, res) {
     try {
-      const orders = await OrderModel.findAll();
-      res.json({ data: orders });
+      const { page, limit, status, customer_id, from, to } = req.query;
+      const result = await OrderModel.findAll({ page, limit, status, customer_id, from, to });
+      res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

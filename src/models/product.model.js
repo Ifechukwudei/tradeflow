@@ -1,15 +1,29 @@
-const db = require("../db");
+const db = require('../db');
+const { paginate } = require('../utils/paginate');
 
 const ProductModel = {
-  async findAll() {
-    const { rows } = await db.query(
-      `SELECT p.*, i.qty_on_hand, i.qty_reserved,
-              (i.qty_on_hand - i.qty_reserved) AS qty_available
-       FROM products p
-       LEFT JOIN inventory i ON i.product_id = p.id
-       ORDER BY p.id`,
-    );
-    return rows;
+  async findAll({ page, limit, search } = {}) {
+    const conditions = [];
+    const params = [];
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(p.name ILIKE $${params.length} OR p.sku ILIKE $${params.length})`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const baseQuery = `
+      SELECT p.*, i.qty_on_hand, i.qty_reserved,
+             (i.qty_on_hand - i.qty_reserved) AS qty_available,
+             i.reorder_point
+      FROM products p
+      LEFT JOIN inventory i ON i.product_id = p.id
+      ${where}
+      ORDER BY p.id
+    `;
+
+    return paginate(db, baseQuery, params, { page, limit });
   },
 
   async findById(id) {
@@ -20,48 +34,34 @@ const ProductModel = {
        FROM products p
        LEFT JOIN inventory i ON i.product_id = p.id
        WHERE p.id = $1`,
-      [id],
+      [id]
     );
     return rows[0] || null;
   },
 
-  async create({
-    name,
-    sku,
-    description,
-    unit_price,
-    initial_stock = 0,
-    reorder_point = 0,
-  }) {
+  async create({ name, sku, description, unit_price, initial_stock = 0, reorder_point = 0 }) {
     return db.withTransaction(async (client) => {
-      const {
-        rows: [product],
-      } = await client.query(
+      const { rows: [product] } = await client.query(
         `INSERT INTO products (name, sku, description, unit_price)
          VALUES ($1, $2, $3, $4) RETURNING *`,
-        [name, sku, description, unit_price],
+        [name, sku, description, unit_price]
       );
 
       await client.query(
         `INSERT INTO inventory (product_id, qty_on_hand, reorder_point)
          VALUES ($1, $2, $3)`,
-        [product.id, initial_stock, reorder_point],
+        [product.id, initial_stock, reorder_point]
       );
 
       if (initial_stock > 0) {
         await client.query(
           `INSERT INTO inventory_adjustments (product_id, delta, reason)
            VALUES ($1, $2, 'Initial stock')`,
-          [product.id, initial_stock],
+          [product.id, initial_stock]
         );
       }
 
-      return {
-        ...product,
-        qty_on_hand: initial_stock,
-        qty_reserved: 0,
-        qty_available: initial_stock,
-      };
+      return { ...product, qty_on_hand: initial_stock, qty_reserved: 0, qty_available: initial_stock };
     });
   },
 
@@ -70,7 +70,7 @@ const ProductModel = {
       `UPDATE products
        SET name=$1, description=$2, unit_price=$3, updated_at=NOW()
        WHERE id=$4 RETURNING *`,
-      [name, description, unit_price, id],
+      [name, description, unit_price, id]
     );
     return rows[0] || null;
   },
@@ -78,7 +78,7 @@ const ProductModel = {
   async delete(id) {
     const { rows } = await db.query(
       `DELETE FROM products WHERE id=$1 RETURNING *`,
-      [id],
+      [id]
     );
     return rows[0] || null;
   },

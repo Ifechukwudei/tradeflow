@@ -1,5 +1,9 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+
+
 
 const { authenticate, authorize } = require("./middleware/auth.middleware");
 
@@ -14,6 +18,14 @@ const returnRoutes = require("./routes/return.routes");
 
 const app = express();
 app.use(express.json());
+
+app.use(cookieParser())
+
+// Add this right after app.use(express.json());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true,
+}));
 
 // Health check (public)
 app.get("/health", (req, res) => res.json({ status: "ok" }));

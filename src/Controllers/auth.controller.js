@@ -24,7 +24,6 @@ const AuthController = {
       res.status(500).json({ error: err.message });
     }
   },
-
   async login(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -32,24 +31,38 @@ const AuthController = {
     try {
       const { email, password } = req.body;
 
-      // Find user by email
       const user = await UserModel.findByEmail(email);
       if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-      if (!user.is_active) return res.status(403).json({ error: 'Account is deactivated' });
 
-      // Verify password
-      const isValid = await UserModel.verifyPassword(password, user.password_hash);
-      if (!isValid) return res.status(401).json({ error: 'Invalid email or password' });
+      const valid = await UserModel.verifyPassword(password, user.password_hash);
+      if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
 
-      // Generate token
-      const token = generateToken(user.id);
+      if (!user.is_active) return res.status(401).json({ error: 'Account is deactivated' });
 
-      // Return user without password hash
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      );
+
+      // Set httpOnly cookie - secure and not accessible via JavaScript
+      res.cookie('tf_token', token, {
+        httpOnly: true, // Prevents XSS attacks
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        sameSite: 'lax', // CSRF protection
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
       const { password_hash, ...safeUser } = user;
-      res.json({ data: { user: safeUser, token } });
+      // Only return user data, token is in httpOnly cookie
+      res.json({ data: { user: safeUser } });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  },
+  async logout(req, res) {
+    res.clearCookie('tf_token');
+    res.json({ message: 'Logged out' });
   },
 
   async me(req, res) {
@@ -71,6 +84,15 @@ const AuthController = {
 
     try {
       const user = await UserModel.updateRole(req.params.id, req.body.role);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json({ data: user });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+  async deactivate(req, res) {
+    try {
+      const user = await UserModel.deactivate(req.params.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
       res.json({ data: user });
     } catch (err) {

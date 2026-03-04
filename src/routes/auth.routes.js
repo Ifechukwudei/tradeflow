@@ -27,6 +27,7 @@ const roleRules = [
 // Public routes
 router.post("/register", registerRules, AuthController.register);
 router.post("/login", loginRules, AuthController.login);
+router.post("/logout", AuthController.logout);
 
 // Protected routes
 router.get("/me", authenticate, AuthController.me);
@@ -43,5 +44,6 @@ router.patch(
   roleRules,
   AuthController.updateRole,
 );
+router.patch('/users/:id/deactivate', authorize('admin'), AuthController.deactivate);
 
 module.exports = router;

@@ -26,3 +26,5 @@ jobs:
           context: .
           push: true
           tags:  ghcr.io/ifechukwudei/tradeflow:latest
+          labels: |
+                org.opencontainers.image.source=https://github.com/ifechukwudei/tradeflow

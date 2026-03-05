@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const InventoryController = require("../Controllers/inventory.controller");
+const InventoryController = require("../controllers/inventory.controller");
 
 const adjustRules = [
   body("delta")

@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const CustomerController = require("../Controllers/customer.controller");
+const CustomerController = require("../controllers/customer.controller");
 
 const createRules = [
   body("name").trim().notEmpty().withMessage("Name is required"),

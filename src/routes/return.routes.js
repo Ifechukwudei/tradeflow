@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const ReturnController = require("../Controllers/return.controller");
+const ReturnController = require("../controllers/return.controller");
 
 const createRules = [
   body("order_id").isInt({ min: 1 }).withMessage("Valid order_id is required"),

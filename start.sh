@@ -5,13 +5,32 @@
 
 echo "🚀 Starting Tradeflow Backend..."
 
+# Get database host from environment variable (defaults to 'postgres' for Docker)
+DB_HOST=${DB_HOST:-postgres}
+DB_PORT=${DB_PORT:-5432}
+
+echo "📍 Database host: $DB_HOST:$DB_PORT"
+
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL to be ready..."
-until nc -z postgres 5432; do
-  echo "   PostgreSQL is unavailable - sleeping"
+MAX_RETRIES=30
+RETRY_COUNT=0
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; then
+    echo "✅ PostgreSQL is ready!"
+    break
+  fi
+  
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  echo "   Attempt $RETRY_COUNT/$MAX_RETRIES - PostgreSQL is unavailable, waiting..."
   sleep 2
 done
-echo "✅ PostgreSQL is ready!"
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "❌ Failed to connect to PostgreSQL after $MAX_RETRIES attempts"
+  echo "   Trying to start anyway (database might be ready)..."
+fi
 
 # Run database migrations
 echo "📦 Running database migrations..."

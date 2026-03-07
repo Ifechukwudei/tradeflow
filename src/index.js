@@ -23,7 +23,11 @@ app.use(cookieParser());
 // Add this right after app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost",
+      "https://tradeflow-ui.vercel.app/",
+    ],
     credentials: true,
   }),
 );

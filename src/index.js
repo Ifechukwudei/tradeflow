@@ -26,7 +26,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost",
-      "https://tradeflow-ui.vercel.app/",
+      "https://tradeflow-ui.vercel.app",
     ],
     credentials: true,
   }),

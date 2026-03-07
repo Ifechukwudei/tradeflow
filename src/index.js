@@ -20,7 +20,16 @@ app.use(express.json());
 
 app.use(cookieParser());
 
-// Add this right after app.use(express.json());
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
+// CORS configuration
 app.use(
   cors({
     origin: [
@@ -29,6 +38,8 @@ app.use(
       "https://tradeflow-ui.vercel.app",
     ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
 

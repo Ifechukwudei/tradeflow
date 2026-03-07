@@ -45,17 +45,9 @@ const AuthController = {
         { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
       );
 
-      // Set httpOnly cookie - secure and not accessible via JavaScript
-      res.cookie('tf_token', token, {
-        httpOnly: true, // Prevents XSS attacks
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: 'lax', // CSRF protection
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-
       const { password_hash, ...safeUser } = user;
-      // Only return user data, token is in httpOnly cookie
-      res.json({ data: { user: safeUser } });
+      // Return both user and token for cross-domain deployment
+      res.json({ data: { user: safeUser, token } });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

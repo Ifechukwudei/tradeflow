@@ -33,6 +33,8 @@ app.use((req, res, next) => {
 app.use(
   cors({
     origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
       "http://localhost:5173",
       "http://localhost",
       "https://tradeflow-ui.vercel.app",
@@ -70,7 +72,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 const start = async () => {
   // Wait for postgres to be ready
   let retries = 10;

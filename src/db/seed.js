@@ -101,14 +101,14 @@ async function seed() {
     const order = orderRes.rows[0];
 
     await query(
-      `INSERT INTO order_items (tenant_id, order_id, product_id, quantity, unit_price, total_price)
-       VALUES ($1, $2, $3, 2, $4, $5)`,
-      [tenant1.id, order.id, seededProducts[0].id, seededProducts[0].unit_price, 4998.00]
+      `INSERT INTO order_items (tenant_id, order_id, product_id, quantity, unit_price)
+       VALUES ($1, $2, $3, 2, $4)`,
+      [tenant1.id, order.id, seededProducts[0].id, seededProducts[0].unit_price]
     );
     await query(
-      `INSERT INTO order_items (tenant_id, order_id, product_id, quantity, unit_price, total_price)
-       VALUES ($1, $2, $3, 1, $4, $5)`,
-      [tenant1.id, order.id, seededProducts[1].id, seededProducts[1].unit_price, 899.50]
+      `INSERT INTO order_items (tenant_id, order_id, product_id, quantity, unit_price)
+       VALUES ($1, $2, $3, 1, $4)`,
+      [tenant1.id, order.id, seededProducts[1].id, seededProducts[1].unit_price]
     );
 
     const invRes = await query(

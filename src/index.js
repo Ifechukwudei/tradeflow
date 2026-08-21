@@ -45,8 +45,18 @@ app.use(
   }),
 );
 
+const db = require("./db");
+
 // Health check (public)
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", async (req, res) => {
+  try {
+    // Ping the database to keep it awake on free tiers (like Supabase)
+    await db.query("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (err) {
+    res.status(500).json({ status: "error", database: "disconnected" });
+  }
+});
 
 // Auth routes (public - login/register)
 app.use("/api/auth", authRoutes);
@@ -87,14 +97,23 @@ const start = async () => {
     }
   }
 
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    
+    // Prevent Render from sleeping by self-pinging every 14 minutes
+    const keepAliveUrl = process.env.RENDER_EXTERNAL_URL || 'https://tradeflow-1-ss85.onrender.com';
+    setInterval(() => {
+      try {
+        require('https').get(`${keepAliveUrl}/health`, (res) => {
+          if (res.statusCode === 200) console.log('Keep-alive ping successful');
+        });
+      } catch (e) {
+        console.error('Keep-alive ping failed:', e.message);
+      }
+    }, 14 * 60 * 1000);
+  });
 };
 
 start();
-// Alternative if you want to run migrate separately:
-// migrate().then(() => {
-//   app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-// });
-// app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = app;

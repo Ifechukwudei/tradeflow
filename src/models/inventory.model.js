@@ -2,9 +2,9 @@ const db = require('../db');
 const { paginate } = require('../utils/paginate');
 
 const InventoryModel = {
-  async findAll({ page, limit, stock_status } = {}) {
-    const conditions = [];
-    const params = [];
+  async findAll(tenant_id, { page, limit, stock_status } = {}) {
+    const conditions = ['i.tenant_id = $1'];
+    const params = [tenant_id];
 
     if (stock_status === 'low_stock') {
       conditions.push('(i.qty_on_hand - i.qty_reserved) <= i.reorder_point');
@@ -15,7 +15,7 @@ const InventoryModel = {
       conditions.push('(i.qty_on_hand - i.qty_reserved) > i.reorder_point');
     }
 
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const where = 'WHERE ' + conditions.join(' AND ');
 
     const baseQuery = `
       SELECT p.id AS product_id, p.name, p.sku,
@@ -26,7 +26,7 @@ const InventoryModel = {
                   WHEN (i.qty_on_hand - i.qty_reserved) <= i.reorder_point THEN 'low_stock'
                   ELSE 'ok' END AS stock_status
       FROM inventory i
-      JOIN products p ON p.id = i.product_id
+      JOIN products p ON p.id = i.product_id AND p.tenant_id = i.tenant_id
       ${where}
       ORDER BY p.id
     `;
@@ -34,16 +34,17 @@ const InventoryModel = {
     return paginate(db, baseQuery, params, { page, limit });
   },
 
-  async getLowStock() {
+  async getLowStock(tenant_id) {
     const { rows } = await db.query(
       `SELECT p.id AS product_id, p.name, p.sku,
               i.qty_on_hand, i.qty_reserved,
               (i.qty_on_hand - i.qty_reserved) AS qty_available,
               i.reorder_point
        FROM inventory i
-       JOIN products p ON p.id = i.product_id
-       WHERE (i.qty_on_hand - i.qty_reserved) <= i.reorder_point
-       ORDER BY qty_available ASC`
+       JOIN products p ON p.id = i.product_id AND p.tenant_id = i.tenant_id
+       WHERE i.tenant_id = $1 AND (i.qty_on_hand - i.qty_reserved) <= i.reorder_point
+       ORDER BY qty_available ASC`,
+      [tenant_id]
     );
     return rows;
   },
@@ -52,12 +53,12 @@ const InventoryModel = {
    * Adjust stock for a product (positive = add, negative = remove).
    * Uses a transaction to keep qty and adjustment log in sync.
    */
-  async adjust(product_id, delta, reason) {
+  async adjust(tenant_id, product_id, delta, reason) {
     return db.withTransaction(async (client) => {
       // Lock the row to prevent race conditions
       const { rows } = await client.query(
-        `SELECT * FROM inventory WHERE product_id = $1 FOR UPDATE`,
-        [product_id]
+        `SELECT * FROM inventory WHERE product_id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [product_id, tenant_id]
       );
 
       if (!rows[0]) throw new Error('Inventory record not found for this product');
@@ -71,34 +72,34 @@ const InventoryModel = {
 
       const { rows: [updated] } = await client.query(
         `UPDATE inventory SET qty_on_hand = $1, updated_at = NOW()
-         WHERE product_id = $2 RETURNING *`,
-        [new_qty, product_id]
+         WHERE product_id = $2 AND tenant_id = $3 RETURNING *`,
+        [new_qty, product_id, tenant_id]
       );
 
       await client.query(
-        `INSERT INTO inventory_adjustments (product_id, delta, reason) VALUES ($1, $2, $3)`,
-        [product_id, delta, reason || 'Manual adjustment']
+        `INSERT INTO inventory_adjustments (tenant_id, product_id, delta, reason) VALUES ($1, $2, $3, $4)`,
+        [tenant_id, product_id, delta, reason || 'Manual adjustment']
       );
 
       return updated;
     });
   },
 
-  async getAdjustmentHistory(product_id) {
+  async getAdjustmentHistory(tenant_id, product_id) {
     const { rows } = await db.query(
       `SELECT * FROM inventory_adjustments
-       WHERE product_id = $1
+       WHERE product_id = $1 AND tenant_id = $2
        ORDER BY created_at DESC`,
-      [product_id]
+      [product_id, tenant_id]
     );
     return rows;
   },
 
-  async updateReorderPoint(product_id, reorder_point) {
+  async updateReorderPoint(tenant_id, product_id, reorder_point) {
     const { rows } = await db.query(
       `UPDATE inventory SET reorder_point = $1, updated_at = NOW()
-       WHERE product_id = $2 RETURNING *`,
-      [reorder_point, product_id]
+       WHERE product_id = $2 AND tenant_id = $3 RETURNING *`,
+      [reorder_point, product_id, tenant_id]
     );
     return rows[0] || null;
   },

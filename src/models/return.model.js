@@ -8,22 +8,22 @@ const generateCreditNoteNumber = () => {
 };
 
 const ReturnModel = {
-  async findAll({ page, limit, status } = {}) {
-    const conditions = [];
-    const params = [];
+  async findAll(tenant_id, { page, limit, status } = {}) {
+    const conditions = ['r.tenant_id = $1'];
+    const params = [tenant_id];
 
     if (status) {
       params.push(status);
       conditions.push(`r.status = $${params.length}`);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = `WHERE ${conditions.join(" AND ")}`;
 
     const baseQuery = `
       SELECT r.*, c.name AS customer_name, o.total_amount AS order_total
       FROM returns r
-      JOIN orders o ON o.id = r.order_id
-      JOIN customers c ON c.id = o.customer_id
+      JOIN orders o ON o.id = r.order_id AND o.tenant_id = r.tenant_id
+      JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
       ${where}
       ORDER BY r.id DESC
     `;
@@ -31,16 +31,16 @@ const ReturnModel = {
     return paginate(db, baseQuery, params, { page, limit });
   },
 
-  async findById(id) {
+  async findById(tenant_id, id) {
     const {
       rows: [ret],
     } = await db.query(
       `SELECT r.*, c.name AS customer_name, o.total_amount AS order_total
        FROM returns r
-       JOIN orders o ON o.id = r.order_id
-       JOIN customers c ON c.id = o.customer_id
-       WHERE r.id = $1`,
-      [id],
+       JOIN orders o ON o.id = r.order_id AND o.tenant_id = r.tenant_id
+       JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+       WHERE r.id = $1 AND r.tenant_id = $2`,
+      [id, tenant_id],
     );
 
     if (!ret) return null;
@@ -48,23 +48,29 @@ const ReturnModel = {
     const { rows: items } = await db.query(
       `SELECT ri.*, p.name AS product_name, p.sku, p.unit_price
        FROM return_items ri
-       JOIN products p ON p.id = ri.product_id
-       WHERE ri.return_id = $1`,
-      [id],
+       JOIN products p ON p.id = ri.product_id AND p.tenant_id = ri.tenant_id
+       WHERE ri.return_id = $1 AND ri.tenant_id = $2`,
+      [id, tenant_id],
     );
 
     const {
       rows: [credit_note],
-    } = await db.query(`SELECT * FROM credit_notes WHERE return_id = $1`, [id]);
+    } = await db.query(
+      `SELECT * FROM credit_notes WHERE return_id = $1 AND tenant_id = $2`,
+      [id, tenant_id]
+    );
 
     return { ...ret, items, credit_note: credit_note || null };
   },
 
-  async create({ order_id, reason, notes, items }) {
+  async create(tenant_id, { order_id, reason, notes, items }) {
     return db.withTransaction(async (client) => {
       const {
         rows: [order],
-      } = await client.query(`SELECT * FROM orders WHERE id = $1`, [order_id]);
+      } = await client.query(
+        `SELECT * FROM orders WHERE id = $1 AND tenant_id = $2`,
+        [order_id, tenant_id]
+      );
 
       if (!order) throw new Error("Order not found");
       if (!["shipped", "invoiced", "paid"].includes(order.status)) {
@@ -77,8 +83,8 @@ const ReturnModel = {
         const {
           rows: [orderItem],
         } = await client.query(
-          `SELECT * FROM order_items WHERE order_id = $1 AND product_id = $2`,
-          [order_id, item.product_id],
+          `SELECT * FROM order_items WHERE order_id = $1 AND product_id = $2 AND tenant_id = $3`,
+          [order_id, item.product_id, tenant_id],
         );
 
         if (!orderItem) {
@@ -97,33 +103,36 @@ const ReturnModel = {
       const {
         rows: [ret],
       } = await client.query(
-        `INSERT INTO returns (order_id, reason, notes) VALUES ($1, $2, $3) RETURNING *`,
-        [order_id, reason, notes],
+        `INSERT INTO returns (tenant_id, order_id, reason, notes) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [tenant_id, order_id, reason, notes],
       );
 
       for (const item of items) {
         await client.query(
-          `INSERT INTO return_items (return_id, product_id, quantity) VALUES ($1, $2, $3)`,
-          [ret.id, item.product_id, item.quantity],
+          `INSERT INTO return_items (tenant_id, return_id, product_id, quantity) VALUES ($1, $2, $3, $4)`,
+          [tenant_id, ret.id, item.product_id, item.quantity],
         );
       }
 
       const { rows: returnItems } = await client.query(
         `SELECT ri.*, p.name AS product_name, p.sku, p.unit_price
-   FROM return_items ri
-   JOIN products p ON p.id = ri.product_id
-   WHERE ri.return_id = $1`,
-        [ret.id],
+         FROM return_items ri
+         JOIN products p ON p.id = ri.product_id AND p.tenant_id = ri.tenant_id
+         WHERE ri.return_id = $1 AND ri.tenant_id = $2`,
+        [ret.id, tenant_id],
       );
 
       return { ...ret, items: returnItems, credit_note: null };
     });
   },
 
-  async approve(id) {
+  async approve(tenant_id, id) {
     const {
       rows: [ret],
-    } = await db.query(`SELECT * FROM returns WHERE id = $1`, [id]);
+    } = await db.query(
+      `SELECT * FROM returns WHERE id = $1 AND tenant_id = $2`,
+      [id, tenant_id]
+    );
     if (!ret) throw new Error("Return not found");
     if (ret.status !== "requested")
       throw new Error(`Cannot approve a return with status: ${ret.status}`);
@@ -131,16 +140,19 @@ const ReturnModel = {
     const {
       rows: [updated],
     } = await db.query(
-      `UPDATE returns SET status='approved', updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [id],
+      `UPDATE returns SET status='approved', updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+      [id, tenant_id],
     );
     return updated;
   },
 
-  async reject(id, notes) {
+  async reject(tenant_id, id, notes) {
     const {
       rows: [ret],
-    } = await db.query(`SELECT * FROM returns WHERE id = $1`, [id]);
+    } = await db.query(
+      `SELECT * FROM returns WHERE id = $1 AND tenant_id = $2`,
+      [id, tenant_id]
+    );
     if (!ret) throw new Error("Return not found");
     if (ret.status !== "requested")
       throw new Error(`Cannot reject a return with status: ${ret.status}`);
@@ -148,19 +160,20 @@ const ReturnModel = {
     const {
       rows: [updated],
     } = await db.query(
-      `UPDATE returns SET status='rejected', notes=$1, updated_at=NOW() WHERE id=$2 RETURNING *`,
-      [notes, id],
+      `UPDATE returns SET status='rejected', notes=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3 RETURNING *`,
+      [notes, id, tenant_id],
     );
     return updated;
   },
 
-  async restock(id) {
+  async restock(tenant_id, id) {
     return db.withTransaction(async (client) => {
       const {
         rows: [ret],
-      } = await client.query(`SELECT * FROM returns WHERE id=$1 FOR UPDATE`, [
-        id,
-      ]);
+      } = await client.query(
+        `SELECT * FROM returns WHERE id=$1 AND tenant_id=$2 FOR UPDATE`,
+        [id, tenant_id],
+      );
 
       if (!ret) throw new Error("Return not found");
       if (ret.status !== "approved") {
@@ -172,22 +185,22 @@ const ReturnModel = {
       const { rows: items } = await client.query(
         `SELECT ri.*, p.unit_price
          FROM return_items ri
-         JOIN products p ON p.id = ri.product_id
-         WHERE ri.return_id = $1`,
-        [id],
+         JOIN products p ON p.id = ri.product_id AND p.tenant_id = ri.tenant_id
+         WHERE ri.return_id = $1 AND ri.tenant_id = $2`,
+        [id, tenant_id],
       );
 
       let credit_amount = 0;
 
       for (const item of items) {
         await client.query(
-          `UPDATE inventory SET qty_on_hand = qty_on_hand + $1, updated_at = NOW() WHERE product_id = $2`,
-          [item.quantity, item.product_id],
+          `UPDATE inventory SET qty_on_hand = qty_on_hand + $1, updated_at = NOW() WHERE product_id = $2 AND tenant_id = $3`,
+          [item.quantity, item.product_id, tenant_id],
         );
 
         await client.query(
-          `INSERT INTO inventory_adjustments (product_id, delta, reason) VALUES ($1, $2, $3)`,
-          [item.product_id, item.quantity, `Returned on Return #${id}`],
+          `INSERT INTO inventory_adjustments (tenant_id, product_id, delta, reason) VALUES ($1, $2, $3, $4)`,
+          [tenant_id, item.product_id, item.quantity, `Returned on Return #${id}`],
         );
 
         credit_amount += parseFloat(item.unit_price) * item.quantity;
@@ -195,28 +208,29 @@ const ReturnModel = {
 
       const credit_note_number = generateCreditNoteNumber();
       await client.query(
-        `INSERT INTO credit_notes (return_id, credit_note_number, amount) VALUES ($1, $2, $3)`,
-        [id, credit_note_number, credit_amount.toFixed(2)],
+        `INSERT INTO credit_notes (tenant_id, return_id, credit_note_number, amount) VALUES ($1, $2, $3, $4)`,
+        [tenant_id, id, credit_note_number, credit_amount.toFixed(2)],
       );
 
       const {
         rows: [updated],
       } = await client.query(
-        `UPDATE returns SET status='restocked', updated_at=NOW() WHERE id=$1 RETURNING *`,
-        [id],
+        `UPDATE returns SET status='restocked', updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+        [id, tenant_id],
       );
 
       return { ...updated, credit_amount, credit_note_number };
     });
   },
 
-  async refund(id) {
+  async refund(tenant_id, id) {
     return db.withTransaction(async (client) => {
       const {
         rows: [ret],
-      } = await client.query(`SELECT * FROM returns WHERE id=$1 FOR UPDATE`, [
-        id,
-      ]);
+      } = await client.query(
+        `SELECT * FROM returns WHERE id=$1 AND tenant_id=$2 FOR UPDATE`,
+        [id, tenant_id],
+      );
 
       if (!ret) throw new Error("Return not found");
       if (ret.status !== "restocked") {
@@ -226,15 +240,15 @@ const ReturnModel = {
       }
 
       await client.query(
-        `UPDATE credit_notes SET status='refunded', updated_at=NOW() WHERE return_id=$1`,
-        [id],
+        `UPDATE credit_notes SET status='refunded', updated_at=NOW() WHERE return_id=$1 AND tenant_id=$2`,
+        [id, tenant_id],
       );
 
       const {
         rows: [updated],
       } = await client.query(
-        `UPDATE returns SET status='refunded', updated_at=NOW() WHERE id=$1 RETURNING *`,
-        [id],
+        `UPDATE returns SET status='refunded', updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+        [id, tenant_id],
       );
 
       return updated;

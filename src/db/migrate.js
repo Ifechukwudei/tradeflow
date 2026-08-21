@@ -4,8 +4,18 @@ const migrate = async () => {
   console.log("Running migrations...");
 
   await query(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id            SERIAL PRIMARY KEY,
+      company_name  VARCHAR(255) NOT NULL,
+      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS users (
       id            SERIAL PRIMARY KEY,
+      tenant_id     INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name          VARCHAR(255) NOT NULL,
       email         VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -20,18 +30,21 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS products (
       id          SERIAL PRIMARY KEY,
+      tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name        VARCHAR(255) NOT NULL,
-      sku         VARCHAR(100) UNIQUE NOT NULL,
+      sku         VARCHAR(100) NOT NULL,
       description TEXT,
       unit_price  NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
       created_at  TIMESTAMPTZ DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ DEFAULT NOW()
+      updated_at  TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, sku)
     );
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS inventory (
       id            SERIAL PRIMARY KEY,
+      tenant_id     INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       product_id    INTEGER UNIQUE NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       qty_on_hand   INTEGER NOT NULL DEFAULT 0 CHECK (qty_on_hand >= 0),
       qty_reserved  INTEGER NOT NULL DEFAULT 0 CHECK (qty_reserved >= 0),
@@ -43,6 +56,7 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS inventory_adjustments (
       id          SERIAL PRIMARY KEY,
+      tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       product_id  INTEGER NOT NULL REFERENCES products(id),
       delta       INTEGER NOT NULL,
       reason      VARCHAR(255),
@@ -53,18 +67,21 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS customers (
       id         SERIAL PRIMARY KEY,
+      tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name       VARCHAR(255) NOT NULL,
-      email      VARCHAR(255) UNIQUE NOT NULL,
+      email      VARCHAR(255) NOT NULL,
       phone      VARCHAR(50),
       address    TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, email)
     );
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS orders (
       id           SERIAL PRIMARY KEY,
+      tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       customer_id  INTEGER NOT NULL REFERENCES customers(id),
       status       VARCHAR(50) NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending', 'confirmed', 'shipped', 'invoiced', 'paid', 'cancelled')),
@@ -78,6 +95,7 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS order_items (
       id          SERIAL PRIMARY KEY,
+      tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
       product_id  INTEGER NOT NULL REFERENCES products(id),
       quantity    INTEGER NOT NULL CHECK (quantity > 0),
@@ -90,21 +108,24 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS invoices (
       id             SERIAL PRIMARY KEY,
+      tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       order_id       INTEGER UNIQUE NOT NULL REFERENCES orders(id),
-      invoice_number VARCHAR(50) UNIQUE NOT NULL,
+      invoice_number VARCHAR(50) NOT NULL,
       amount_due     NUMERIC(12, 2) NOT NULL,
       amount_paid    NUMERIC(12, 2) NOT NULL DEFAULT 0,
       due_date       DATE NOT NULL,
       status         VARCHAR(50) NOT NULL DEFAULT 'unpaid'
                      CHECK (status IN ('unpaid', 'partial', 'paid')),
       created_at     TIMESTAMPTZ DEFAULT NOW(),
-      updated_at     TIMESTAMPTZ DEFAULT NOW()
+      updated_at     TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, invoice_number)
     );
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS payments (
       id             SERIAL PRIMARY KEY,
+      tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       invoice_id     INTEGER NOT NULL REFERENCES invoices(id),
       amount         NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
       payment_method VARCHAR(50) NOT NULL DEFAULT 'bank_transfer'
@@ -118,6 +139,7 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS returns (
       id         SERIAL PRIMARY KEY,
+      tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       order_id   INTEGER NOT NULL REFERENCES orders(id),
       reason     TEXT NOT NULL,
       status     VARCHAR(50) NOT NULL DEFAULT 'requested'
@@ -131,6 +153,7 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS return_items (
       id         SERIAL PRIMARY KEY,
+      tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       return_id  INTEGER NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
       product_id INTEGER NOT NULL REFERENCES products(id),
       quantity   INTEGER NOT NULL CHECK (quantity > 0),
@@ -141,22 +164,26 @@ const migrate = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS credit_notes (
       id                 SERIAL PRIMARY KEY,
+      tenant_id          INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       return_id          INTEGER UNIQUE NOT NULL REFERENCES returns(id),
-      credit_note_number VARCHAR(50) UNIQUE NOT NULL,
+      credit_note_number VARCHAR(50) NOT NULL,
       amount             NUMERIC(12, 2) NOT NULL,
       status             VARCHAR(50) NOT NULL DEFAULT 'pending'
                          CHECK (status IN ('pending', 'refunded')),
       created_at         TIMESTAMPTZ DEFAULT NOW(),
-      updated_at         TIMESTAMPTZ DEFAULT NOW()
+      updated_at         TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, credit_note_number)
     );
   `);
 
   console.log("Migrations complete.");
 };
 
-migrate().catch((err) => {
-  console.error("Migration failed:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  migrate().catch((err) => {
+    console.error("Migration failed:", err);
+    process.exit(1);
+  });
+}
 
 module.exports = { migrate };

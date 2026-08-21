@@ -4,7 +4,7 @@ const InventoryModel = require("../models/inventory.model");
 const InventoryController = {
   async getAll(req, res) {
     try {
-      const inventory = await InventoryModel.findAll();
+      const inventory = await InventoryModel.findAll(req.user.tenant_id, req.query);
       res.json({ data: inventory });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -13,7 +13,7 @@ const InventoryController = {
 
   async getLowStock(req, res) {
     try {
-      const items = await InventoryModel.getLowStock();
+      const items = await InventoryModel.getLowStock(req.user.tenant_id);
       res.json({ data: items });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -28,6 +28,7 @@ const InventoryController = {
     try {
       const { delta, reason } = req.body;
       const updated = await InventoryModel.adjust(
+        req.user.tenant_id,
         req.params.product_id,
         delta,
         reason,
@@ -47,6 +48,7 @@ const InventoryController = {
   async getHistory(req, res) {
     try {
       const history = await InventoryModel.getAdjustmentHistory(
+        req.user.tenant_id,
         req.params.product_id,
       );
       res.json({ data: history });
@@ -62,6 +64,7 @@ const InventoryController = {
 
     try {
       const updated = await InventoryModel.updateReorderPoint(
+        req.user.tenant_id,
         req.params.product_id,
         req.body.reorder_point,
       );

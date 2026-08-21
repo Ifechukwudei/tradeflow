@@ -4,7 +4,7 @@ const ProductModel = require("../models/product.model");
 const ProductController = {
   async getAll(req, res) {
     try {
-      const products = await ProductModel.findAll();
+      const products = await ProductModel.findAll(req.user.tenant_id, req.query);
       res.json({ data: products });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -13,7 +13,7 @@ const ProductController = {
 
   async getOne(req, res) {
     try {
-      const product = await ProductModel.findById(req.params.id);
+      const product = await ProductModel.findById(req.user.tenant_id, req.params.id);
       if (!product) return res.status(404).json({ error: "Product not found" });
       res.json({ data: product });
     } catch (err) {
@@ -27,7 +27,7 @@ const ProductController = {
       return res.status(400).json({ errors: errors.array() });
 
     try {
-      const product = await ProductModel.create(req.body);
+      const product = await ProductModel.create(req.user.tenant_id, req.body);
       res.status(201).json({ data: product });
     } catch (err) {
       if (err.code === "23505")
@@ -42,7 +42,7 @@ const ProductController = {
       return res.status(400).json({ errors: errors.array() });
 
     try {
-      const product = await ProductModel.update(req.params.id, req.body);
+      const product = await ProductModel.update(req.user.tenant_id, req.params.id, req.body);
       if (!product) return res.status(404).json({ error: "Product not found" });
       res.json({ data: product });
     } catch (err) {
@@ -52,7 +52,7 @@ const ProductController = {
 
   async delete(req, res) {
     try {
-      const product = await ProductModel.delete(req.params.id);
+      const product = await ProductModel.delete(req.user.tenant_id, req.params.id);
       if (!product) return res.status(404).json({ error: "Product not found" });
       res.json({ message: "Product deleted", data: product });
     } catch (err) {

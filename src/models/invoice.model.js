@@ -8,76 +8,80 @@ const generateInvoiceNumber = () => {
 };
 
 const InvoiceModel = {
-  async findAll() {
+  async findAll(tenant_id) {
     const { rows } = await db.query(
       `SELECT i.*, o.total_amount, c.name AS customer_name
        FROM invoices i
-       JOIN orders o ON o.id = i.order_id
-       JOIN customers c ON c.id = o.customer_id
-       ORDER BY i.id DESC`
+       JOIN orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+       JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+       WHERE i.tenant_id = $1
+       ORDER BY i.id DESC`,
+      [tenant_id]
     );
     return rows;
   },
 
-  async findById(id) {
+  async findById(tenant_id, id) {
     const { rows: [invoice] } = await db.query(
       `SELECT i.*, c.name AS customer_name, c.email AS customer_email
        FROM invoices i
-       JOIN orders o ON o.id = i.order_id
-       JOIN customers c ON c.id = o.customer_id
-       WHERE i.id = $1`,
-      [id]
+       JOIN orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+       JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+       WHERE i.id = $1 AND i.tenant_id = $2`,
+      [id, tenant_id]
     );
 
     if (!invoice) return null;
 
     const { rows: payments } = await db.query(
-      `SELECT * FROM payments WHERE invoice_id = $1 ORDER BY paid_at ASC`,
-      [id]
+      `SELECT * FROM payments WHERE invoice_id = $1 AND tenant_id = $2 ORDER BY paid_at ASC`,
+      [id, tenant_id]
     );
 
     return { ...invoice, payments };
   },
 
-  async findByOrderId(order_id) {
+  async findByOrderId(tenant_id, order_id) {
     const { rows: [invoice] } = await db.query(
-      `SELECT * FROM invoices WHERE order_id = $1`,
-      [order_id]
+      `SELECT * FROM invoices WHERE order_id = $1 AND tenant_id = $2`,
+      [order_id, tenant_id]
     );
     return invoice || null;
   },
 
-  async create(order_id, due_days = 30) {
-    const { rows: [order] } = await db.query(
-      `SELECT * FROM orders WHERE id = $1`,
-      [order_id]
-    );
+  async create(tenant_id, order_id, due_days = 30) {
+    return db.withTransaction(async (client) => {
+      const { rows: [order] } = await client.query(
+        `SELECT * FROM orders WHERE id = $1 AND tenant_id = $2`,
+        [order_id, tenant_id]
+      );
 
-    if (!order) throw new Error('Order not found');
-    if (order.status !== 'shipped') throw new Error('Order must be shipped before invoicing');
+      if (!order) throw new Error('Order not found');
+      if (order.status !== 'shipped') throw new Error('Order must be shipped before invoicing');
 
-    const invoice_number = generateInvoiceNumber();
+      const invoice_number = generateInvoiceNumber();
 
-    const { rows: [invoice] } = await db.query(
-      `INSERT INTO invoices (order_id, invoice_number, amount_due, due_date)
-       VALUES ($1, $2, $3, NOW() + INTERVAL '${due_days} days')
-       RETURNING *`,
-      [order_id, invoice_number, order.total_amount]
-    );
+      const { rows: [invoice] } = await client.query(
+        `INSERT INTO invoices (tenant_id, order_id, invoice_number, amount_due, due_date)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '${parseInt(due_days, 10)} days')
+         RETURNING *`,
+        [tenant_id, order_id, invoice_number, order.total_amount]
+      );
 
-    await db.query(
-      `UPDATE orders SET status='invoiced', updated_at=NOW() WHERE id=$1`,
-      [order_id]
-    );
+      await client.query(
+        `UPDATE orders SET status='invoiced', updated_at=NOW() WHERE id=$1 AND tenant_id=$2`,
+        [order_id, tenant_id]
+      );
 
-    return invoice;
+      return invoice;
+    });
   },
 
-  async recordPayment(invoice_id, { amount, payment_method, reference, notes }) {
+  async recordPayment(tenant_id, invoice_id, { amount, payment_method, reference, notes }) {
     return db.withTransaction(async (client) => {
       const { rows: [invoice] } = await client.query(
-        `SELECT * FROM invoices WHERE id=$1 FOR UPDATE`,
-        [invoice_id]
+        `SELECT * FROM invoices WHERE id=$1 AND tenant_id=$2 FOR UPDATE`,
+        [invoice_id, tenant_id]
       );
 
       if (!invoice) throw new Error('Invoice not found');
@@ -93,9 +97,9 @@ const InvoiceModel = {
 
       // Record the payment
       const { rows: [payment] } = await client.query(
-        `INSERT INTO payments (invoice_id, amount, payment_method, reference, notes)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [invoice_id, amount, payment_method, reference, notes]
+        `INSERT INTO payments (tenant_id, invoice_id, amount, payment_method, reference, notes)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [tenant_id, invoice_id, amount, payment_method, reference, notes]
       );
 
       // Determine new invoice status
@@ -105,15 +109,15 @@ const InvoiceModel = {
       await client.query(
         `UPDATE invoices
          SET amount_paid=$1, status=$2, updated_at=NOW()
-         WHERE id=$3`,
-        [new_amount_paid.toFixed(2), new_status, invoice_id]
+         WHERE id=$3 AND tenant_id=$4`,
+        [new_amount_paid.toFixed(2), new_status, invoice_id, tenant_id]
       );
 
       // If fully paid, update order status
       if (new_status === 'paid') {
         await client.query(
-          `UPDATE orders SET status='paid', updated_at=NOW() WHERE id=$1`,
-          [invoice.order_id]
+          `UPDATE orders SET status='paid', updated_at=NOW() WHERE id=$1 AND tenant_id=$2`,
+          [invoice.order_id, tenant_id]
         );
       }
 

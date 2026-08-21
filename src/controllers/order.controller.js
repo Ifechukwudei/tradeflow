@@ -5,8 +5,7 @@ const InvoiceModel = require('../models/invoice.model');
 const OrderController = {
   async getAll(req, res) {
     try {
-      const { page, limit, status, customer_id, from, to } = req.query;
-      const result = await OrderModel.findAll({ page, limit, status, customer_id, from, to });
+      const result = await OrderModel.findAll(req.user.tenant_id, req.query);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -15,7 +14,7 @@ const OrderController = {
 
   async getOne(req, res) {
     try {
-      const order = await OrderModel.findById(req.params.id);
+      const order = await OrderModel.findById(req.user.tenant_id, req.params.id);
       if (!order) return res.status(404).json({ error: 'Order not found' });
       res.json({ data: order });
     } catch (err) {
@@ -28,7 +27,7 @@ const OrderController = {
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const order = await OrderModel.create(req.body);
+      const order = await OrderModel.create(req.user.tenant_id, req.body);
       res.status(201).json({ data: order });
     } catch (err) {
       if (err.message.includes('Insufficient stock') || err.message.includes('not found')) {
@@ -40,7 +39,7 @@ const OrderController = {
 
   async confirm(req, res) {
     try {
-      const order = await OrderModel.confirm(req.params.id);
+      const order = await OrderModel.confirm(req.user.tenant_id, req.params.id);
       res.json({ message: 'Order confirmed', data: order });
     } catch (err) {
       if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
@@ -51,7 +50,7 @@ const OrderController = {
 
   async ship(req, res) {
     try {
-      const order = await OrderModel.ship(req.params.id);
+      const order = await OrderModel.ship(req.user.tenant_id, req.params.id);
       res.json({ message: 'Order shipped', data: order });
     } catch (err) {
       if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
@@ -63,7 +62,7 @@ const OrderController = {
   async invoice(req, res) {
     try {
       const due_days = req.body.due_days || 30;
-      const invoice = await InvoiceModel.create(req.params.id, due_days);
+      const invoice = await InvoiceModel.create(req.user.tenant_id, req.params.id, due_days);
       res.status(201).json({ message: 'Invoice generated', data: invoice });
     } catch (err) {
       if (err.message.includes('not found')) return res.status(404).json({ error: err.message });
@@ -74,7 +73,7 @@ const OrderController = {
 
   async cancel(req, res) {
     try {
-      const order = await OrderModel.cancel(req.params.id);
+      const order = await OrderModel.cancel(req.user.tenant_id, req.params.id);
       res.json({ message: 'Order cancelled', data: order });
     } catch (err) {
       if (err.message.includes('not found')) return res.status(404).json({ error: err.message });

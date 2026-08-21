@@ -4,7 +4,7 @@ const InvoiceModel = require('../models/invoice.model');
 const InvoiceController = {
   async getAll(req, res) {
     try {
-      const invoices = await InvoiceModel.findAll();
+      const invoices = await InvoiceModel.findAll(req.user.tenant_id);
       res.json({ data: invoices });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -13,7 +13,7 @@ const InvoiceController = {
 
   async getOne(req, res) {
     try {
-      const invoice = await InvoiceModel.findById(req.params.id);
+      const invoice = await InvoiceModel.findById(req.user.tenant_id, req.params.id);
       if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
       res.json({ data: invoice });
     } catch (err) {
@@ -26,7 +26,7 @@ const InvoiceController = {
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const payment = await InvoiceModel.recordPayment(req.params.id, req.body);
+      const payment = await InvoiceModel.recordPayment(req.user.tenant_id, req.params.id, req.body);
       res.status(201).json({ data: payment });
     } catch (err) {
       if (err.message.includes('not found')) return res.status(404).json({ error: err.message });

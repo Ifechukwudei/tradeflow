@@ -5,7 +5,7 @@ const CustomerController = {
   async getAll(req, res) {
     try {
       const { page, limit, search } = req.query;
-      const result = await CustomerModel.findAll({ page, limit, search });
+      const result = await CustomerModel.findAll(req.user.tenant_id, { page, limit, search });
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -14,7 +14,7 @@ const CustomerController = {
 
   async getOne(req, res) {
     try {
-      const customer = await CustomerModel.findById(req.params.id);
+      const customer = await CustomerModel.findById(req.user.tenant_id, req.params.id);
       if (!customer) return res.status(404).json({ error: 'Customer not found' });
       res.json({ data: customer });
     } catch (err) {
@@ -27,7 +27,7 @@ const CustomerController = {
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const customer = await CustomerModel.create(req.body);
+      const customer = await CustomerModel.create(req.user.tenant_id, req.body);
       res.status(201).json({ data: customer });
     } catch (err) {
       if (err.code === '23505') return res.status(409).json({ error: 'Email already exists' });
@@ -40,7 +40,7 @@ const CustomerController = {
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const customer = await CustomerModel.update(req.params.id, req.body);
+      const customer = await CustomerModel.update(req.user.tenant_id, req.params.id, req.body);
       if (!customer) return res.status(404).json({ error: 'Customer not found' });
       res.json({ data: customer });
     } catch (err) {

@@ -4,6 +4,7 @@ const AuthController = require("../controllers/auth.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 const registerRules = [
+  body("company_name").optional().trim(),
   body("name").trim().notEmpty().withMessage("Name is required"),
   body("email").isEmail().withMessage("Valid email is required"),
   body("password")
@@ -44,6 +45,11 @@ router.patch(
   roleRules,
   AuthController.updateRole,
 );
-router.patch('/users/:id/deactivate', authorize('admin'), AuthController.deactivate);
+router.patch(
+  "/users/:id/deactivate",
+  authenticate,
+  authorize("admin"),
+  AuthController.deactivate,
+);
 
 module.exports = router;

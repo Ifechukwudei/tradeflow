@@ -97,7 +97,7 @@ const start = async () => {
     }
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     
     // Keep Supabase awake by pinging the health endpoint internally every 14 minutes

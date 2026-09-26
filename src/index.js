@@ -100,12 +100,12 @@ const start = async () => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     
-    // Prevent Render from sleeping by self-pinging every 14 minutes
-    const keepAliveUrl = process.env.RENDER_EXTERNAL_URL || 'https://tradeflow-1-ss85.onrender.com';
+    // Keep Supabase awake by pinging the health endpoint internally every 14 minutes
+    // (Railway doesn't sleep, so we just ping localhost to avoid external bandwidth usage)
     setInterval(() => {
       try {
-        require('https').get(`${keepAliveUrl}/health`, (res) => {
-          if (res.statusCode === 200) console.log('Keep-alive ping successful');
+        require('http').get(`http://127.0.0.1:${PORT}/health`, (res) => {
+          if (res.statusCode === 200) console.log('Database keep-alive ping successful');
         });
       } catch (e) {
         console.error('Keep-alive ping failed:', e.message);
@@ -114,6 +114,9 @@ const start = async () => {
   });
 };
 
-start();
+// Only start the server if we are not running in a Vercel Serverless environment
+if (!process.env.VERCEL) {
+  start();
+}
 
 module.exports = app;

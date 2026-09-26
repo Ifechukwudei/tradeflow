@@ -1,5 +1,6 @@
 const { validationResult } = require("express-validator");
 const ProductModel = require("../models/product.model");
+const { insertAuditLog } = require("./audit.controller");
 
 const ProductController = {
   async getAll(req, res) {
@@ -28,6 +29,7 @@ const ProductController = {
 
     try {
       const product = await ProductModel.create(req.user.tenant_id, req.body);
+      await insertAuditLog(req.user.tenant_id, req.user.id, "CREATE", "products", product.id, req.body);
       res.status(201).json({ data: product });
     } catch (err) {
       if (err.code === "23505")
@@ -44,6 +46,7 @@ const ProductController = {
     try {
       const product = await ProductModel.update(req.user.tenant_id, req.params.id, req.body);
       if (!product) return res.status(404).json({ error: "Product not found" });
+      await insertAuditLog(req.user.tenant_id, req.user.id, "UPDATE", "products", product.id, req.body);
       res.json({ data: product });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -54,6 +57,7 @@ const ProductController = {
     try {
       const product = await ProductModel.delete(req.user.tenant_id, req.params.id);
       if (!product) return res.status(404).json({ error: "Product not found" });
+      await insertAuditLog(req.user.tenant_id, req.user.id, "DELETE", "products", product.id, product);
       res.json({ message: "Product deleted", data: product });
     } catch (err) {
       res.status(500).json({ error: err.message });

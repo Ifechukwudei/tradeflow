@@ -176,6 +176,19 @@ const migrate = async () => {
     );
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      tenant_id INT,
+      user_id INT,
+      action VARCHAR,
+      entity VARCHAR,
+      entity_id INT,
+      changes JSONB,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log("Migrations complete.");
 };
 

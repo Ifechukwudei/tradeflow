@@ -2,6 +2,15 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const rateLimit = require("express-rate-limit");
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window`
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const { authenticate, authorize } = require("./middleware/auth.middleware");
 
@@ -13,6 +22,7 @@ const orderRoutes = require("./routes/order.routes");
 const invoiceRoutes = require("./routes/invoice.routes");
 const reportsRoutes = require("./routes/reports.routes");
 const returnRoutes = require("./routes/return.routes");
+const auditRoutes = require("./routes/audit.routes");
 const { migrate } = require("./db/migrate");
 
 const app = express();
@@ -28,6 +38,9 @@ app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
+
+// Apply rate limiting to all requests
+app.use(limiter);
 
 // CORS configuration
 app.use(
@@ -72,6 +85,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/returns", returnRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

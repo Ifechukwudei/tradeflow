@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { body } = require('express-validator');
 const ProductController = require('../controllers/product.controller');
+const { authorize } = require('../middleware/auth.middleware');
 
 const createRules = [
   body('name').trim().notEmpty().withMessage('Name is required'),
@@ -19,6 +20,6 @@ router.get('/', ProductController.getAll);
 router.get('/:id', ProductController.getOne);
 router.post('/', createRules, ProductController.create);
 router.patch('/:id', updateRules, ProductController.update);
-router.delete('/:id', ProductController.delete);
+router.delete('/:id', authorize('admin'), ProductController.delete);
 
 module.exports = router;

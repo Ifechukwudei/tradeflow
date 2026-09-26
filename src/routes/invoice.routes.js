@@ -11,8 +11,11 @@ const paymentRules = [
   body('notes').optional().trim(),
 ];
 
+const { generateInvoicePDF } = require('../controllers/pdf.controller');
+
 router.get('/', InvoiceController.getAll);
 router.get('/:id', InvoiceController.getOne);
+router.get('/:id/pdf', generateInvoicePDF);
 router.post('/:id/payments', paymentRules, InvoiceController.recordPayment);
 
 module.exports = router;
